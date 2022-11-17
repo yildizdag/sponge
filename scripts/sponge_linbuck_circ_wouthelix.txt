@@ -3,6 +3,7 @@
 !! BIOMIMETIC DESIGN BASED ON
 !! EUPLECTELLA ASPERGILLUM
 !! ONLY CIRCUMFERENTIAL PRESSURE
+!! WITHOUT BIG HELIX
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 /PREP7
 !!!!!!!!!!!!!!!!
