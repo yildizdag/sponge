@@ -1,1 +1,1 @@
-Design and FEA of a biomimetic material based on the hexactinellid sea sponge Euplectella Aspergillum.
+Computational design and optimization of lattice metamaterials inspired by Euplectella aspergillum using parametric modelling and finite element analysis.
