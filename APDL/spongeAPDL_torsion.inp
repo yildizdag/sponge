@@ -328,90 +328,130 @@ LATT,1,,1,,COUNT,,1
 *ENDIF
 COUNT = COUNT+1
 *ENDDO
-!!!!!!!!!!!
+!-----------------------
+! MESHING
+!-----------------------
 LSEL,ALL
 BTOL,1E-10
 LESIZE,ALL
 LMESH,ALL
-!!!!!!!!!!!
-CSYS,1
+!-----------------------
+!----------------------------------------------------------------
+! BOUNDARY CONDITIONS AND LOADING
+!----------------------------------------------------------------
+CSYS,0
 SELTOL,1E-8
-NSEL,S,LOC,Z,0,0
-NSEL,R,LOC,X,R,R
+
+TORQUE = 10.0                 ! N.mm for N-mm-MPa units
+
+!----------------------------------------------------------------
+! PHYSICAL BEAM NODES
+! Exclude auxiliary orientation nodes
+!----------------------------------------------------------------
+ESEL,S,TYPE,,1
+NSLE,S,ACTIVE
+CM,BEAM_NODES,NODE
+
+!----------------------------------------------------------------
+! BOTTOM END: FULLY FIXED
+!----------------------------------------------------------------
+CMSEL,S,BEAM_NODES
+NSEL,R,LOC,Z,-1E-8,1E-8
+CM,BOTTOM_NODES,NODE
+
 D,ALL,UX,0
 D,ALL,UY,0
 D,ALL,UZ,0
 D,ALL,ROTX,0
 D,ALL,ROTY,0
 D,ALL,ROTZ,0
+
+!----------------------------------------------------------------
+! TOP END: SAVE PHYSICAL NODE NUMBERS
+!----------------------------------------------------------------
+CMSEL,S,BEAM_NODES
+NSEL,R,LOC,Z,H-1E-8,H+1E-8
+CM,TOP_NODES,NODE
+
+*GET,NTOP,NODE,0,COUNT
+
+*DIM,TOP_IDS,ARRAY,NTOP
+*VGET,TOP_IDS(1),NODE,,NLIST
+
+!------------------------------------------------------------
+! CREATE CENTRAL PILOT NODE
+!------------------------------------------------------------
 ALLSEL,ALL
-!!!!!!!!!!!
-CSYS,1
-SELTOL,1E-8
-NSEL,S,LOC,Z,H,H
-NSEL,R,LOC,X,R,R
-D,ALL,UX,0
-D,ALL,UY,0
-ALLSEL,ALL
-!!!!!!!!!!!
-CSYS,0
-ESEL,S,CENT,Z,H,H
-*GET,NUMEL,ELEM,0,COUNT
-*GET,CE,ELEM,0,NUM,MIN
-*DO,I,1,NUMEL
-*GET,N1,ELEM,CE,NODE,1
-*GET,N2,ELEM,CE,NODE,2
-*GET,N1X,NODE,N1,LOC,X
-*GET,N1Y,NODE,N1,LOC,Y
-*GET,N1Z,NODE,N1,LOC,Z
-*GET,N2X,NODE,N2,LOC,X
-*GET,N2Y,NODE,N2,LOC,Y
-*GET,N2Z,NODE,N2,LOC,Z
-X_CENT = 0.5*(N1X+N2X)
-Y_CENT = 0.5*(N1Y+N2Y)
-V1_XCOMP = N2X-N1X
-V1_YCOMP = N2Y-N1Y
-CRPROD = V1_XCOMP*Y_CENT-V1_YCOMP*X_CENT
-*IF,CRPROD,LT,0,THEN
-SFBEAM,CE,2,PRES,1,,,,,,0
-*ELSE
-SFBEAM,CE,2,PRES,-1,,,,,,0
-*ENDIF
-*GET,CE1,ELEM,CE,NXTH
-CE=CE1
+*GET,NPIL,NODE,0,NUM,MAX
+NPIL = NPIL+1
+N,NPIL,0,0,H
+
+!------------------------------------------------------------
+! MPC184 RIGID BEAMS
+! Type number 2 is reserved for the rigid grip
+!------------------------------------------------------------
+ET,2,MPC184
+KEYOPT,2,1,1             ! Rigid beam: six DOFs per node
+KEYOPT,2,2,0             ! Direct elimination
+
+TYPE,2
+MAT,1
+
+*DO,II,1,NTOP
+    E,NPIL,TOP_IDS(II)
 *ENDDO
-!!!!!!!!!!!!!!!!!!!!!!!
+
+! Store rigid-grip elements separately
+ESEL,S,TYPE,,2
+CM,GRIP_ELEMENTS,ELEM
 ALLSEL,ALL
 
-FINISH  
-/SOLU   
-ANTYPE,0 
-NLGEOM,0
-NROPT,AUTO, ,   
-LUMPM,0 
-EQSLV, , ,0, ,DELE  
-MSAVE,0 
-PCGOPT,0, ,AUTO, , ,AUTO
-PIVCHECK,0  
-PSTRESS,1   
-TOFFST,0,   
-/STATUS,SOLU
+!------------------------------------------------------------
+! PILOT CONSTRAINTS
+!------------------------------------------------------------
+D,NPIL,UX,0
+D,NPIL,UY,0
+D,NPIL,UZ,0
+D,NPIL,ROTX,0
+D,NPIL,ROTY,0
+
+! UZ remains free: permits axial extension/contraction
+! ROTZ remains free: responds to the applied torque
+F,NPIL,MZ,TORQUE
+
+ALLSEL,ALL
+SELTOL
+FINISH
+
+!------------------------------------------------------------
+! LINEAR ELASTIC STATIC ANALYSIS
+!------------------------------------------------------------
+/SOLU
+ANTYPE,STATIC
+NLGEOM,OFF
+PSTRES,OFF
+EQSLV,SPARSE
+OUTRES,ALL,ALL
+
 SOLVE
 FINISH
-/SOLUTION   
-ANTYPE,1
-FINISH  
-/PREP7  
-FINISH  
-/SOL
-BUCOPT,LANB,NOBUCK,0,0,CENTER
-MXPAND,NOBUCK,0,0,1,0.001,   
-/STATUS,SOLU
-SOLVE
-FINISH
+
+!------------------------------------------------------------
+! POSTPROCESSING
+!------------------------------------------------------------
 /POST1
-SET,FIRST
-*GET,BLOAD,ACTIVE,0,SET,TIME
-ETABLE,,VOLU,,
+SET,LAST
+ALLSEL,ALL
+CSYS,0
+RSYS,0
+
+! Pilot rotation and axial displacement
+*GET,TWIST,NODE,NPIL,ROT,Z
+
+! Physical lattice volume: exclude MPC184 elements
+ESEL,S,TYPE,,1
+ETABLE,EVOL,VOLU
 SSUM
-*GET,TOTVOL,SSUM,0,ITEM,VOLU
+*GET,TOTVOL,SSUM,0,ITEM,EVOL
+
+K_TORS = ABS(TORQUE/TWIST)
